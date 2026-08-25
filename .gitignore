@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local data / generated database
+data/database/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Word documents / temporary lock files
+*.docx
+~$*.docx
