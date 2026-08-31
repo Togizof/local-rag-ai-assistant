@@ -1,0 +1,21 @@
+BOOK NOTES: CLEAN CODE BY ROBERT C. MARTIN
+------------------------------------------
+
+Chapter 1: Clean Code
+Clean code is code that has been written by someone who cares. It is elegant, readable, and easy to maintain. Bad code slows development down and creates technical debt.
+
+Chapter 2: Meaningful Names
+- Use intention-revealing names. Choose names that say what the variable, function, or class does.
+- Avoid disinformation. Do not use names that mislead the reader.
+- Use pronounceable and searchable names.
+
+Chapter 3: Functions
+- Functions should be small. They should rarely be longer than 20 lines.
+- Functions should do one thing. They should do it well and do it only.
+- Use descriptive names for functions.
+- Limit the number of arguments. A function should ideally have zero, one, or two arguments. Three arguments should be avoided if possible.
+
+Chapter 4: Comments
+- Don't comment bad code—rewrite it. Clean code does not need many comments because the code itself explains what it does.
+- Good comments are informative, explain intent, or clarify complex algorithms.
+- Bad comments are redundant, misleading, or noisy.

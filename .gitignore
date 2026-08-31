@@ -9,8 +9,12 @@ venv/
 .venv/
 env/
 
-# Local data / generated database
+# Local database
 data/database/
+
+# Ignore personal reading docs except the clean code notes sample
+data/docs/*
+!data/docs/clean_code_notes.txt
 
 # Editor / OS
 .vscode/

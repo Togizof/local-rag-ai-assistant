@@ -1,44 +1,49 @@
-# Local RAG AI Assistant
+# My Library Assistant 📚
 
-A simple offline AI assistant that answers questions based on your local documents. This project runs completely on your local machine using **Microsoft Foundry Local** for model inference and **SQLite** to store text chunks and vector embeddings. No internet connection or API keys are required.
+This is a local, offline AI assistant designed to help you search and query your reading notes and book summaries. It runs completely offline using **Microsoft Foundry Local** for model inference and **SQLite** to store text chunks and vector embeddings.
+
+It supports bilingual Q&A, allowing you to ask questions in Turkish even if your reading notes are in English.
 
 ---
 
 ## Features
 
-- **100% Offline:** All data stays on your local machine. No data is sent to the cloud.
-- **Local Embeddings:** Uses the `qwen3-embedding-0.6b` model to create text vectors.
-- **Local LLM:** Uses the `phi-3.5-mini` model to generate responses based on your files.
-- **Smart Chunking:** Splits documents into chunks while respecting sentence boundaries.
-- **Semantic Search:** Uses Cosine Similarity to retrieve the most relevant document passages.
-- **Sources Citing:** The assistant references the exact document it used to answer the question.
-- **Two Interfaces:** Includes a Streamlit Web Dashboard and a Command Line Interface (CLI).
+- **100% Offline:** All reading notes stay private on your local machine. No internet or external API keys needed.
+- **Bilingual Q&A:** Ask questions in Turkish, and the assistant will search and translate English book notes to answer you in Turkish.
+- **SQLite Database:** Stores text passages and vectors locally.
+- **Streamlit Web UI:** A clean, book-themed dashboard to upload notes and chat with your library assistant.
+- **Unit Tests:** Simple tests to verify vector math and database operations.
 
 ---
 
-## Project Structure
+## Notion Integration (How to Import Your Notes)
 
-- `app.py`: Streamlit web application.
-- `cli.py`: Interactive command-line chat interface.
-- `ingest.py`: Script to process documents and save vectors into SQLite.
-- `test_rag.py`: Unit tests for similarity calculations and SQLite database operations.
-- `src/`: Core Python modules containing database, embedding, LLM, and pipeline logic.
-- `data/docs/`: Directory where you place your input text/markdown files.
+If you keep your reading notes in Notion, you can import them into this assistant in a few easy steps:
+
+1. **Open Notion:** Go to the page or database containing your reading notes.
+2. **Open Export Menu:** Click the three dots `...` in the top right corner of the Notion page.
+3. **Select Export:** Click **Export**.
+4. **Choose Format:** Set the **Export format** to `Markdown & CSV`.
+5. **Download:** Click **Export**. Notion will download a ZIP file containing your pages as Markdown (`.md`) files.
+6. **Extract:** Extract the ZIP file.
+7. **Copy Files:** Copy the extracted `.md` files and paste them into the `data/docs/` directory of this project.
+8. **Index:** Run the indexing script to build your local library database:
+   ```bash
+   python ingest.py --clear
+   ```
+Now you can search all your Notion notes offline!
 
 ---
 
 ## Installation & Setup
 
-### 1. Clone the repository
-Navigate to your local project directory.
-
-### 2. Create a virtual environment
+### 1. Create a virtual environment
 ```bash
 python -m venv .venv
 ```
 
-### 3. Activate the virtual environment
-- **Windows (PowerShell):**
+### 2. Activate the virtual environment
+- **Windows:**
   ```powershell
   .venv\Scripts\activate
   ```
@@ -47,7 +52,7 @@ python -m venv .venv
   source .venv/bin/activate
   ```
 
-### 4. Install dependencies
+### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
@@ -56,34 +61,26 @@ pip install -r requirements.txt
 
 ## How to Run
 
-### Step 1: Place your documents
-Put your `.txt` or `.md` files in the `data/docs/` directory.
+### Step 1: Place your book notes
+Put your `.txt` or `.md` files (exported from Notion or elsewhere) in the `data/docs/` directory.
 
-### Step 2: Index your documents
-Process and save your documents to the SQLite database:
+### Step 2: Index documents
+Build your local database:
 ```bash
 python ingest.py --clear
 ```
-*(Note: On the first run, the local models will download automatically. Subsequent runs will be fully offline).*
 
-### Step 3: Run the application
-
-#### Option A: Streamlit Web UI (Recommended)
+### Step 3: Start the application
 ```bash
 python -m streamlit run app.py
 ```
 Open `http://localhost:8501` in your browser.
 
-#### Option B: Console Chat (CLI)
-```bash
-python cli.py
-```
-
 ---
 
 ## Running Tests
 
-To verify that the vector database and search math work correctly, run the unit test suite:
+To run the unit tests:
 ```bash
 python -m unittest test_rag.py
 ```

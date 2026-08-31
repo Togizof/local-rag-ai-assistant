@@ -4,53 +4,50 @@ from src.pipeline import RAGPipeline
 
 def main():
     """
-    Ingest tool to read docs and save them in SQLite.
+    Ingest tool to read book notes and save them in the library database.
     """
-    parser = argparse.ArgumentParser(description="Ingest docs into SQLite.")
-    parser.add_argument("--docs_dir", type=str, default="data/docs", help="Docs folder path.")
-    parser.add_argument("--clear", action="store_true", help="Clear DB before starting.")
+    parser = argparse.ArgumentParser(description="Ingest book notes into SQLite database.")
+    parser.add_argument("--docs_dir", type=str, default="data/docs", help="Directory where book notes are stored.")
+    parser.add_argument("--clear", action="store_true", help="Clear library database before indexing.")
     args = parser.parse_args()
 
-    # Create folder if not exists
     os.makedirs(args.docs_dir, exist_ok=True)
 
-    print("=== Local RAG Indexing ===")
-    print("Loading models and starting pipeline...")
+    print("=== Library Data Indexing Tool ===")
+    print("Loading models and starting RAG pipeline...")
     try:
         pipeline = RAGPipeline()
     except Exception as e:
-        print(f"\nError: Could not start pipeline. Check Foundry Local status.")
+        print(f"\nError: Could not start RAG pipeline. Check Foundry Local status.")
         print(f"Detail: {e}")
         return
 
-    # Clear DB if requested
     if args.clear:
-        print("\nClearing old database...")
+        print("\nClearing library database...")
         pipeline.db.clear_database()
         print("Done.")
 
-    # Get .txt and .md files
     supported_extensions = (".txt", ".md")
     files = [f for f in os.listdir(args.docs_dir) if f.endswith(supported_extensions)]
 
     if not files:
-        print(f"\nNo .txt or .md files found in '{args.docs_dir}'.")
-        print("Add some files and try again.")
+        print(f"\nNo book notes (.txt or .md) found in '{args.docs_dir}'.")
+        print("Please place book summaries or notes there and try again.")
         return
 
-    print(f"\nIndexing {len(files)} files...")
+    print(f"\nIndexing {len(files)} book note files...")
     
     total_chunks = 0
     for file_name in files:
         file_path = os.path.join(args.docs_dir, file_name)
         chunks_added = pipeline.ingest_document(file_path)
         total_chunks += chunks_added
-        print(f"-> {file_name}: saved {chunks_added} chunks.")
+        print(f"-> {file_name}: {chunks_added} passages saved.")
 
     print("\n=======================================")
-    print("Finished indexing successfully!")
-    print(f"Added Chunks: {total_chunks}")
-    print(f"Total Chunks in DB: {pipeline.db.count_chunks()}")
+    print("Library indexing completed successfully!")
+    print(f"Total passages added: {total_chunks}")
+    print(f"Total passages in library database: {pipeline.db.count_chunks()}")
     print("=======================================")
 
 if __name__ == "__main__":

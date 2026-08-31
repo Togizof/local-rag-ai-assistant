@@ -22,12 +22,14 @@ class RAGPipeline:
         self.embedding_mgr = EmbeddingManager(model_name=embedding_model)
         self.llm_mgr = LLMManager(model_name=llm_model)
         
-        # Simple system prompt to prevent hallucinations
+        # Highly compressed system prompt to reduce prompt processing time on CPU
         self.system_prompt = (
-            "You are a helpful AI assistant. Answer the question using only the provided context.\n"
-            "If you do not know the answer, say 'I don't have that information.'\n"
-            "Do not make up facts.\n"
-            "Include the source document name in brackets at the end of your answer if possible."
+            "You are a helpful reading assistant.\n"
+            "Guidelines:\n"
+            "- Answer using ONLY the provided context in the user's language (Turkish or English).\n"
+            "- If not in context, say 'Bu bilgi notlarımda bulunmuyor.' or 'Not in notes'.\n"
+            "- Keep answers direct, brief and well-grounded. Do not write filler text.\n"
+            "- Put source filename in brackets."
         )
 
     def chunk_text(self, text: str, max_chunk_chars: int = 800, overlap_chars: int = 150) -> List[str]:
@@ -70,6 +72,21 @@ class RAGPipeline:
             return 0
         
         document_name = os.path.basename(file_path)
+        
+        # Skip files that are already indexed in SQLite
+        conn = self.db._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM chunks WHERE document_name = ?", (document_name,))
+            existing_count = cursor.fetchone()[0]
+            if existing_count > 0:
+                logger.info(f"File '{document_name}' is already indexed. Skipping.")
+                return 0
+        except Exception as e:
+            logger.error(f"Error checking index status for {document_name}: {e}")
+        finally:
+            conn.close()
+
         logger.info(f"Ingesting file: {document_name}")
         
         try:
@@ -102,22 +119,60 @@ class RAGPipeline:
             logger.error(f"Error ingesting file {document_name}: {e}")
             return 0
 
-    def query(self, user_question: str, top_k: int = 3, temperature: float = 0.2) -> Tuple[str, List[Dict[str, Any]]]:
-        # Run normal query
-        # 1. Get embedding for the user question
-        query_emb = self.embedding_mgr.get_embedding(user_question)
+    def _get_library_previews(self) -> str:
+        # Read the first 300 characters of each file in data/docs to build a quick summary
+        docs_dir = "data/docs"
+        if not os.path.exists(docs_dir):
+            return "No files in library."
+            
+        previews = []
+        files = [f for f in os.listdir(docs_dir) if f.endswith((".txt", ".md"))]
+        for file_name in files[:10]:  # Limit to 10 files to avoid massive prompts on CPU
+            file_path = os.path.join(docs_dir, file_name)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    preview = f.read(200).replace("\n", " ")  # Trim preview size
+                previews.append(f"Book File: {file_name}\nPreview: {preview}...")
+            except Exception:
+                previews.append(f"Book File: {file_name}")
         
-        # 2. Get closest chunks from database
+        if len(files) > 10:
+            previews.append(f"... and {len(files) - 10} more books loaded.")
+            
+        return "\n\n".join(previews)
+
+    def query(self, user_question: str, top_k: int = 2, temperature: float = 0.2) -> Tuple[str, List[Dict[str, Any]]]:
+        # Run normal query
+        query_emb = self.embedding_mgr.get_embedding(user_question)
         similar_chunks_with_scores = self.db.search_similar_chunks(query_emb, top_k=top_k)
         
-        if not similar_chunks_with_scores:
-            return "No documents found in the database. Please ingest some files first.", []
+        # Filter chunks by relevance score to keep prompt context light on CPU
+        relevant_chunks = [item for item in similar_chunks_with_scores if item[1] >= 0.22]
+        
+        # Check if similarity score is too low or DB is empty
+        if not relevant_chunks:
+            logger.info("Similarity score below threshold. Reading book previews for summary.")
+            previews = self._get_library_previews()
+            sys_prompt = (
+                "You are a helpful reading assistant. The user wants to know what notes are in their library, "
+                "or they asked a general question that doesn't match any specific notes. "
+                "Here are the files currently in the library with their content previews:\n\n"
+                f"{previews}\n\n"
+                "Write a polite, friendly response in the user's language (Turkish or English).\n"
+                "Briefly summarize what books/notes are in the library. Keep it short."
+            )
+            answer = self.llm_mgr.generate_response(
+                system_prompt=sys_prompt,
+                user_prompt=user_question,
+                temperature=temperature
+            )
+            return answer, []
             
-        # Format the context text
+        # Format the context text for RAG
         context_parts = []
         retrieved_chunks = []
         
-        for idx, (chunk, score) in enumerate(similar_chunks_with_scores):
+        for idx, (chunk, score) in enumerate(relevant_chunks):
             context_parts.append(
                 f"[Source {idx+1} - File: {chunk['document_name']} (Score: {score:.4f})]\n"
                 f"{chunk['content']}"
@@ -139,7 +194,6 @@ class RAGPipeline:
         )
         
         logger.info("Getting answer from LLM...")
-        # 4. Generate response
         answer = self.llm_mgr.generate_response(
             system_prompt=self.system_prompt,
             user_prompt=user_prompt,
@@ -148,20 +202,37 @@ class RAGPipeline:
         
         return answer, retrieved_chunks
 
-    def query_stream(self, user_question: str, top_k: int = 3, temperature: float = 0.2) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
+    def query_stream(self, user_question: str, top_k: int = 2, temperature: float = 0.2) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
         # Run streaming query
         query_emb = self.embedding_mgr.get_embedding(user_question)
         similar_chunks_with_scores = self.db.search_similar_chunks(query_emb, top_k=top_k)
         
-        if not similar_chunks_with_scores:
-            def empty_gen():
-                yield "No documents found in the database. Please ingest some files first."
-            return empty_gen(), []
+        # Filter chunks by relevance score to keep prompt context light on CPU
+        relevant_chunks = [item for item in similar_chunks_with_scores if item[1] >= 0.22]
+        
+        # Check if similarity score is too low or DB is empty
+        if not relevant_chunks:
+            logger.info("Similarity score below threshold. Reading previews for streaming summary.")
+            previews = self._get_library_previews()
+            sys_prompt = (
+                "You are a helpful reading assistant. The user wants to know what notes are in their library, "
+                "or they asked a general question that doesn't match any specific notes. "
+                "Here are the files currently in the library with their content previews:\n\n"
+                f"{previews}\n\n"
+                "Write a polite, friendly response in the user's language (Turkish or English).\n"
+                "Briefly summarize what books/notes are in the library. Keep it short."
+            )
+            stream_gen = self.llm_mgr.generate_response_stream(
+                system_prompt=sys_prompt,
+                user_prompt=user_question,
+                temperature=temperature
+            )
+            return stream_gen, []
             
         context_parts = []
         retrieved_chunks = []
         
-        for idx, (chunk, score) in enumerate(similar_chunks_with_scores):
+        for idx, (chunk, score) in enumerate(relevant_chunks):
             context_parts.append(
                 f"[Source {idx+1} - File: {chunk['document_name']} (Score: {score:.4f})]\n"
                 f"{chunk['content']}"

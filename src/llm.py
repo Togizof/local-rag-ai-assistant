@@ -62,7 +62,7 @@ class LLMManager:
             return f"Error: Model could not generate response. Detail: {str(e)}"
             
     def generate_response_stream(self, system_prompt: str, user_prompt: str, temperature: float = 0.3, max_tokens: int = 512):
-        # Stream response from the LLM
+        # Stream response from the LLM with word/phrase buffering to avoid slow char-by-char streaming on CPU
         try:
             self.client.settings.temperature = temperature
             self.client.settings.max_tokens = max_tokens
@@ -71,9 +71,21 @@ class LLMManager:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ])
+            
+            buffer = ""
             for chunk in response:
                 if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    content = chunk.choices[0].delta.content
+                    buffer += content
+                    # Flush buffer if it ends with punctuation, spaces, newlines, or grows too long (>=12 chars)
+                    if len(buffer) >= 12 or any(c in content for c in (" ", "\n", ".", ",", "!", "?", ";", ":")):
+                        yield buffer
+                        buffer = ""
+            
+            # Flush any remaining text
+            if buffer:
+                yield buffer
+                
         except Exception as e:
             logger.error(f"Error streaming response: {e}")
             yield f"\n[Stream Error: {str(e)}]"

@@ -92,6 +92,16 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_all_document_names(self) -> List[str]:
+        # Get list of unique document names in database
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT document_name FROM chunks")
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
     @staticmethod
     def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
         # Calculate similarity between two vectors
